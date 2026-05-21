@@ -13,6 +13,23 @@ REPO_BRANCH="${REPO_BRANCH:-main}"
 APP_DIR="${APP_DIR:-/opt/overlap-lab}"
 HOSTNAME_VALUE="${HOSTNAME_VALUE:-overlap-prod}"
 
+# Helper to read instance metadata attributes (returns empty string on failure)
+get_metadata() {
+  local key="$1"
+  curl -sf -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/${key}" || true
+}
+
+# Apply metadata overrides if present (metadata keys: REPO_URL, REPO_BRANCH, APP_DIR, HOSTNAME_VALUE, LAB_MODE, DEV_PORTAL_TOKEN, SECRET_KEY, IMAGE_BUILD)
+meta_val=""
+meta_val="$(get_metadata "REPO_URL")" && [[ -n "${meta_val}" ]] && REPO_URL="${meta_val}"
+meta_val="$(get_metadata "REPO_BRANCH")" && [[ -n "${meta_val}" ]] && REPO_BRANCH="${meta_val}"
+meta_val="$(get_metadata "APP_DIR")" && [[ -n "${meta_val}" ]] && APP_DIR="${meta_val}"
+meta_val="$(get_metadata "HOSTNAME_VALUE")" && [[ -n "${meta_val}" ]] && HOSTNAME_VALUE="${meta_val}"
+meta_val="$(get_metadata "LAB_MODE")" && [[ -n "${meta_val}" ]] && export LAB_MODE="${meta_val}"
+meta_val="$(get_metadata "DEV_PORTAL_TOKEN")" && [[ -n "${meta_val}" ]] && export DEV_PORTAL_TOKEN="${meta_val}"
+meta_val="$(get_metadata "SECRET_KEY")" && [[ -n "${meta_val}" ]] && export SECRET_KEY="${meta_val}"
+meta_val="$(get_metadata "IMAGE_BUILD")" && [[ -n "${meta_val}" ]] && export IMAGE_BUILD="${meta_val}"
+
 log() {
   echo "[$(date -Is)] $*"
 }
