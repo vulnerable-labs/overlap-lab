@@ -1,0 +1,7 @@
+# Ignore runtime-generated secrets and flags
+app/static/.env.bak
+app/flags/*.txt
+
+# Ignore logs and local state
+/var/log/
+overlap-startup.log

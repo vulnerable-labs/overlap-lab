@@ -1,0 +1,58 @@
+services:
+  web:
+    build:
+      context: ./app
+    container_name: overlap-web
+    environment:
+      DEV_PORTAL_TOKEN: ${DEV_PORTAL_TOKEN}
+      SECRET_KEY: ${SECRET_KEY}
+      LAB_MODE: ${LAB_MODE:-secure}
+    ports:
+      - "8080:5000"
+    # Security settings for multi-tenant / production hosts
+    read_only: true
+    tmpfs:
+      - /tmp:rw,size=64m
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  flag-vault:
+    image: alpine:3.20
+    container_name: overlap-flag-vault
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /vault
+        cat > /vault/phase3.txt <<'EOF'
+        VulnOS{socket_pivot_b7e2}
+        EOF
+        tail -f /dev/null
+    volumes:
+      - vault-data:/vault
+    restart: unless-stopped
+
+  hostroot-seed:
+    image: alpine:3.20
+    container_name: overlap-hostroot-seed
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /rootfs/root
+        cat > /rootfs/root/root.txt <<'EOF'
+        VulnOS{simulated_host_root_c19f}
+        EOF
+        tail -f /dev/null
+    volumes:
+      - hostroot-data:/rootfs
+    restart: unless-stopped
+
+volumes:
+  vault-data:
+  hostroot-data:

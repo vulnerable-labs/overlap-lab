@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Overlap Management Portal</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1020;
+        --panel: rgba(12, 18, 36, 0.88);
+        --panel-border: rgba(160, 176, 255, 0.18);
+        --text: #e8ecff;
+        --muted: #9aa7d6;
+        --accent: #f5a524;
+        --accent-strong: #ffcc66;
+        --danger: #ff6b6b;
+        --success: #49d17d;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(245, 165, 36, 0.18), transparent 30%),
+          radial-gradient(circle at bottom right, rgba(89, 117, 255, 0.16), transparent 35%),
+          linear-gradient(160deg, #090d1b 0%, #11192d 45%, #090d1b 100%);
+        color: var(--text);
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .shell {
+        width: min(960px, 100%);
+        display: grid;
+        gap: 24px;
+        grid-template-columns: 1.1fr 0.9fr;
+        align-items: stretch;
+      }
+
+      .hero, .card {
+        border: 1px solid var(--panel-border);
+        background: var(--panel);
+        backdrop-filter: blur(18px);
+        border-radius: 24px;
+        box-shadow: 0 28px 70px rgba(0, 0, 0, 0.35);
+      }
+
+      .hero {
+        padding: 34px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 420px;
+      }
+
+      .card {
+        padding: 28px;
+        display: grid;
+        gap: 18px;
+        align-content: center;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        width: fit-content;
+        gap: 10px;
+        align-items: center;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(245, 165, 36, 0.12);
+        color: var(--accent-strong);
+        font-size: 0.78rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        font-size: clamp(2.3rem, 4vw, 4.4rem);
+        line-height: 0.95;
+        margin: 18px 0 16px;
+      }
+
+      p {
+        color: var(--muted);
+        line-height: 1.65;
+        margin: 0;
+      }
+
+      form {
+        display: grid;
+        gap: 14px;
+      }
+
+      label {
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      input {
+        width: 100%;
+        border: 1px solid rgba(154, 167, 214, 0.24);
+        background: rgba(4, 8, 18, 0.72);
+        color: var(--text);
+        padding: 14px 16px;
+        border-radius: 14px;
+        font-size: 1rem;
+        outline: none;
+      }
+
+      input:focus {
+        border-color: rgba(245, 165, 36, 0.65);
+        box-shadow: 0 0 0 4px rgba(245, 165, 36, 0.12);
+      }
+
+      button {
+        border: 0;
+        cursor: pointer;
+        border-radius: 14px;
+        padding: 14px 16px;
+        background: linear-gradient(135deg, var(--accent), #ff8c42);
+        color: #111;
+        font-weight: 700;
+        font-size: 0.98rem;
+      }
+
+      .note {
+        display: grid;
+        gap: 10px;
+        padding: 18px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .alerts {
+        display: grid;
+        gap: 10px;
+      }
+
+      .alert {
+        padding: 12px 14px;
+        border-radius: 12px;
+        font-size: 0.94rem;
+      }
+
+      .success { background: rgba(73, 209, 125, 0.12); color: #a7f0bf; }
+      .error { background: rgba(255, 107, 107, 0.12); color: #ffb4b4; }
+      .info { background: rgba(90, 120, 255, 0.12); color: #c8d3ff; }
+
+      @media (max-width: 860px) {
+        .shell { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <div class="eyebrow">Internal / Work-from-home</div>
+          <h1>Overlap Management Portal</h1>
+          <p>
+            A developer left the administrative surface reachable while testing from home.
+            The portal is locked behind a backup token, but the backup itself was never cleaned up.
+          </p>
+        </div>
+        <p>Leak the backup. Unlock the portal. Follow the chain.</p>
+      </section>
+
+      <section class="card">
+        <div>
+          <h2 style="margin: 0 0 6px;">Access Portal</h2>
+          <p>Use the token from the forgotten backup file.</p>
+        </div>
+
+        <div class="alerts">
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              {% for category, message in messages %}
+                <div class="alert {{ category }}">{{ message }}</div>
+              {% endfor %}
+            {% endif %}
+          {% endwith %}
+        </div>
+
+        <form method="post" action="{{ url_for('login') }}">
+          <label for="token">Portal token</label>
+          <input id="token" name="token" autocomplete="off" placeholder="Enter the leaked token" />
+          <button type="submit">Unlock</button>
+        </form>
+
+        <div class="note">
+          <strong>Training note</strong>
+          <p>The lab is intentionally isolated and should only be run in a disposable environment.</p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
