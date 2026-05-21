@@ -9,13 +9,13 @@ docker compose up -d --build
 Open the portal at:
 
 ```text
-http://localhost:8080
+http://localhost
 ```
 
 The leaked backup is available at:
 
 ```text
-http://localhost:8080/.env.bak
+http://localhost/.env.bak
 ```
 
 ## Reset

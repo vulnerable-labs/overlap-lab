@@ -8,7 +8,7 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       LAB_MODE: ${LAB_MODE:-secure}
     ports:
-      - "8080:5000"
+      - "80:5000"
     # Security settings for multi-tenant / production hosts
     read_only: true
     tmpfs:
