@@ -12,6 +12,45 @@ Open the portal at `http://localhost`.
 
 The leaked backup is available at `http://localhost/.env.bak`.
 
+## GCP Cloud Shell Launch
+
+The web container already publishes the landing page on host port 80 through `docker-compose.yml` (`80:5000`). Use the commands below from Google Cloud Shell to create a VM, open port 80, and bootstrap the lab with `gcp-startup.sh`.
+
+```bash
+PROJECT=vulnos-1
+ZONE=asia-south2-a
+NETWORK=vulnos-vpc
+SUBNET=lab-subnet
+INSTANCE=overlord-prime-lab
+TAG=http-server
+
+gcloud config set project "$PROJECT"
+
+gcloud compute firewall-rules create allow-overlap-http \
+	--project="$PROJECT" \
+	--network="$NETWORK" \
+	--direction=INGRESS \
+	--action=ALLOW \
+	--rules=tcp:80 \
+	--source-ranges=0.0.0.0/0 \
+	--target-tags="$TAG"
+
+gcloud compute instances create "$INSTANCE" \
+	--project="$PROJECT" \
+	--zone="$ZONE" \
+	--machine-type=e2-medium \
+	--image-family=ubuntu-2204-lts \
+	--image-project=ubuntu-os-cloud \
+	--boot-disk-size=30GB \
+	--boot-disk-type=pd-balanced \
+	--network="$NETWORK" \
+	--subnet="$SUBNET" \
+	--tags="$TAG" \
+	--metadata=startup-script-url=https://raw.githubusercontent.com/vulnerable-labs/overlap-lab/main/gcp-startup.sh
+```
+
+If you are using the GitHub page URL you shared, convert it to the raw file URL above. GCE startup scripts must be fetched from the raw content endpoint, not the `blob` page.
+
 ## Expected Workflow
 
 1. Start the lab and fetch `/.env.bak`.
