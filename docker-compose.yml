@@ -7,6 +7,7 @@ services:
       DEV_PORTAL_TOKEN: ${DEV_PORTAL_TOKEN}
       SECRET_KEY: ${SECRET_KEY}
       LAB_MODE: ${LAB_MODE:-secure}
+      SECURE_COOKIES: ${SECURE_COOKIES:-1}
     ports:
       - "80:5000"
     # Security settings for multi-tenant / production hosts

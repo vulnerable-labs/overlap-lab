@@ -19,7 +19,7 @@ get_metadata() {
   curl -sf -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/${key}" || true
 }
 
-# Apply metadata overrides if present (metadata keys: REPO_URL, REPO_BRANCH, APP_DIR, HOSTNAME_VALUE, LAB_MODE, DEV_PORTAL_TOKEN, SECRET_KEY, IMAGE_BUILD)
+# Apply metadata overrides if present (metadata keys: REPO_URL, REPO_BRANCH, APP_DIR, HOSTNAME_VALUE, LAB_MODE, DEV_PORTAL_TOKEN, SECRET_KEY)
 meta_val=""
 meta_val="$(get_metadata "REPO_URL")" && [[ -n "${meta_val}" ]] && REPO_URL="${meta_val}"
 meta_val="$(get_metadata "REPO_BRANCH")" && [[ -n "${meta_val}" ]] && REPO_BRANCH="${meta_val}"
@@ -28,7 +28,6 @@ meta_val="$(get_metadata "HOSTNAME_VALUE")" && [[ -n "${meta_val}" ]] && HOSTNAM
 meta_val="$(get_metadata "LAB_MODE")" && [[ -n "${meta_val}" ]] && export LAB_MODE="${meta_val}"
 meta_val="$(get_metadata "DEV_PORTAL_TOKEN")" && [[ -n "${meta_val}" ]] && export DEV_PORTAL_TOKEN="${meta_val}"
 meta_val="$(get_metadata "SECRET_KEY")" && [[ -n "${meta_val}" ]] && export SECRET_KEY="${meta_val}"
-meta_val="$(get_metadata "IMAGE_BUILD")" && [[ -n "${meta_val}" ]] && export IMAGE_BUILD="${meta_val}"
 
 log() {
   echo "[$(date -Is)] $*"
@@ -114,94 +113,6 @@ else
   retry 3 git clone --branch "${REPO_BRANCH}" --single-branch "${REPO_URL}" "${APP_DIR}"
 fi
 
-# If building a golden image, prepare a first-boot service that will generate
-# runtime-unique secrets on first boot. This avoids baking secrets into the image.
-if [[ "${IMAGE_BUILD:-0}" == "1" ]]; then
-  log "Preparing image-firstboot service for first-boot initialization..."
-
-  cat > /usr/local/bin/overlap-firstboot.sh <<'EOF'
-#!/bin/bash
-set -euo pipefail
-
-LOG_FILE=/var/log/overlap-firstboot.log
-exec > >(tee -a "${LOG_FILE}") 2>&1
-
-# If already initialized, exit (idempotent across reboots)
-if [[ -f /var/lib/overlap/initialized ]]; then
-  exit 0
-fi
-
-# Wait for docker to be ready
-for i in $(seq 1 30); do
-  if docker info >/dev/null 2>&1; then
-    break
-  fi
-  sleep 2
-done
-
-APP_DIR="${APP_DIR}"
-DEV_TOKEN="S3cur3_Dev_$(head -c6 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c6)"
-PHASE1_FLAG="VulnOS_$(uuidgen | tr -d '-')"
-PHASE2_FLAG="VulnOS_$(uuidgen | tr -d '-')"
-SECRET_KEY="$(head -c24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-
-mkdir -p "${APP_DIR}/app/static"
-mkdir -p "${APP_DIR}/app/flags"
-
-cat > "${APP_DIR}/app/static/.env.bak" <<EO2
-# auto-generated at first boot
-DEV_PORTAL_TOKEN=${DEV_TOKEN}
-PHASE1_FLAG=${PHASE1_FLAG}
-EO2
-
-printf "%s\n" "${PHASE2_FLAG}" > "${APP_DIR}/app/flags/phase2.txt"
-
-export DEV_PORTAL_TOKEN="${DEV_TOKEN}"
-export SECRET_KEY="${SECRET_KEY}"
-export LAB_MODE="${LAB_MODE:-secure}"
-
-cd "${APP_DIR}"
-docker compose up -d --build
-
-# mark as initialized so this script only runs once
-mkdir -p /var/lib/overlap
-touch /var/lib/overlap/initialized
-EOF
-
-  chmod +x /usr/local/bin/overlap-firstboot.sh
-  # Replace the literal ${APP_DIR} placeholder in the first-boot script with the real path
-  sed -i "s|\${APP_DIR}|${APP_DIR}|g" /usr/local/bin/overlap-firstboot.sh
-
-  cat > /etc/systemd/system/overlap-firstboot.service <<'EOF'
-[Unit]
-Description=Overlap first-boot initialization
-After=network-online.target docker.service
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/overlap-firstboot.sh
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-  systemctl daemon-reload
-  systemctl enable overlap-firstboot.service
-
-  # Remove any runtime artifacts created during image build to avoid leaking secrets
-  rm -f "${APP_DIR}/app/static/.env.bak" || true
-  rm -f "${APP_DIR}/app/flags/phase2.txt" || true
-
-  # Reduce image size
-  apt-get clean
-  rm -rf /var/lib/apt/lists/*
-
-  log "Image build prep complete. The image will initialize on first boot."
-  exit 0
-fi
-
 # --- Seed runtime secrets and flags (do not commit secrets to VCS) ---
 log "Generating runtime secrets and flags..."
 DEV_TOKEN="S3cur3_Dev_$(head -c6 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c6)"
@@ -225,6 +136,8 @@ export DEV_PORTAL_TOKEN="${DEV_TOKEN}"
 export SECRET_KEY="${SECRET_KEY}"
 # default to secure mode; set LAB_MODE=vulnerable in instance metadata only in isolated labs
 export LAB_MODE="${LAB_MODE:-secure}"
+# GCE instances are typically accessed over plain HTTP, so disable secure cookies unless explicitly overridden.
+export SECURE_COOKIES="${SECURE_COOKIES:-0}"
 
 log "Wrote runtime artifacts: .env.bak and phase2 flag."
 
